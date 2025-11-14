@@ -1,24 +1,112 @@
 # display.py
 import streamlit as st
 import pandas as pd
+from typing import Dict, Any
+
+
+# ---------------------------------------------------------
+# Fonctions d'Affichage
+# ---------------------------------------------------------
+def display_global_ranking(df: pd.DataFrame):
+    """
+    Affiche un classement initial des CV triés par Score décroissant.
+    """
+    st.header("🏆 Classement Général des CV")
+    
+    # Assurez-vous d'avoir les colonnes nécessaires, puis triez
+    if 'Score' in df.columns and 'Fichier' in df.columns:
+        # Triez par score décroissant
+        df_ranking = df.sort_values(by='Score', ascending=False).reset_index(drop=True)
+        
+        # Colonnes à afficher pour le classement global
+        cols_to_display = ['Fichier', 'Score']
+        
+        # Si la colonne 'gain_vs_original' existe, l'ajouter pour l'info
+        if 'gain_vs_original' in df_ranking.columns:
+            cols_to_display.append('gain_vs_original')
+        
+        # Affichage du classement (utilise uniquement les colonnes sélectionnées)
+        st.dataframe(
+            df_ranking[cols_to_display],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Score": st.column_config.NumberColumn("Score (Max 100)", format="%.2f"),
+                "gain_vs_original": st.column_config.NumberColumn("Gain vs Original", format="%+.2f"),
+            }
+        )
+        st.markdown("---") # Séparateur visuel avant l'affichage détaillé
+    else:
+        st.warning("Le DataFrame de résultats ne contient pas les colonnes 'Fichier' et 'Score' pour le classement.")
+
 
 def afficher_groupes_console(df_sorted):
-    """Affichage console (réutilisable ailleurs)."""
+    """Affichage console (réutilisable ailleurs).
+    Affiche les CV par groupes : l'original + les versions améliorées
+    Exemple : Antoine original + Antoine enhanced 1 + Antoine enhanced 2 ... 
+    """
     for base, group in df_sorted.groupby("base_name"):
         print(f"\n📄 {base}")
         for _, r in group.iterrows():
             gain = f"(+{r['gain_vs_original']:.2f})" if r['gain_vs_original'] > 0 else f"({r['gain_vs_original']:.2f})"
             print(f"   {r['Fichier']:<80} {r['Score']:6.2f} {gain}")
+            
+### Sur streamlit
+# --- Fonction Utilitaires Nécessaire (Correction de l'Erreur) ---
+def custom_format(row: Dict[str, Any]) -> str:
+    """Formate la colonne Score et Gain dans une chaîne de caractères lisible."""
+    score = f"{row['Score']:6.2f}"
+    gain = row.get('gain_vs_original')
+    
+    # Assurez-vous que la colonne existe et n'est pas NaN
+    if gain is not None and pd.notna(gain):
+        # Utilise :+ pour forcer l'affichage du signe '+' pour les gains positifs
+        gain_str = f"({gain:+.2f})" 
+        return f"{score} {gain_str}"
+    
+    return score
+            
+def afficher_groupes_streamlit(df_sorted: pd.DataFrame):
+    """
+    Affiche le DataFrame des résultats groupés par 'base_name' (CV original),
+    présentant le Fichier, le Score, et le Gain VS Original.
 
-def st_afficher_table(df_sorted):
-    """Affichage Streamlit : tableau + export CSV + grouping view."""
-    st.write("### Résultats (triés)")
-    st.dataframe(df_sorted.style.format({"Score": "{:.2f}", "gain_vs_original": "{:+.2f}"}), height=400)
+    Args:
+        df_sorted (pd.DataFrame): DataFrame des résultats triés, 
+                                  doit contenir les colonnes 'base_name', 
+                                  'Fichier', 'Score', et 'gain_vs_original'.
+    """
+    st.header("🔍 Résultats Détaillés par CV Original")
+    st.markdown("---")
 
-    csv = df_sorted.to_csv(index=False).encode("utf-8")
-    st.download_button("Télécharger CSV", csv, file_name="scores_cv.csv", mime="text/csv")
+    # 1. Groupement des données comme dans la fonction console
+    grouped_data = df_sorted.groupby("base_name")
 
-    st.write("### Vue groupée")
-    for base, group in df_sorted.groupby("base_name"):
-        with st.expander(f"{base} ({len(group)} files)"):
-            st.table(group[["Fichier", "Score", "original_score", "gain_vs_original"]].round(2))
+    for base, group in grouped_data:
+        # 2. Affichage du groupe (CV Original)
+        st.subheader(f"📄 CV Original : **{base}**")
+        
+        # Prépare les données pour l'affichage en gardant uniquement les colonnes pertinentes
+        display_group = group[['Fichier', 'Score', 'gain_vs_original']].copy()
+        
+        # 3. Création d'une colonne formatée pour le score et le gain
+        # Ceci est nécessaire car Streamlit gère mal l'alignement précis dans le Markdown/Tableau simple.
+        
+        # Note: Si la colonne 'gain_vs_original' n'existe pas, on l'ignore (utile si le dataframe n'a pas été enrichi)
+        if 'gain_vs_original' in display_group.columns:
+            display_group['Score & Gain'] = display_group.apply(custom_format, axis=1)
+            final_display = display_group[['Fichier', 'Score & Gain']]
+            # Renomme les colonnes pour une meilleure lisibilité
+            final_display.columns = ['Fichier Modifié', 'Score et Différence']
+        else:
+            final_display = display_group[['Fichier', 'Score']]
+            final_display.columns = ['Fichier Modifié', 'Score']
+            
+        # 4. Affichage du tableau de résultats pour ce groupe
+        st.dataframe(
+            final_display.reset_index(drop=True), 
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.markdown("---") # Séparateur visuel entre les groupes

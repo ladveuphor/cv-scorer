@@ -27,5 +27,6 @@ Une première approche de la dataviz (Tableau, QlikView) est un atout
 df_resultat = pipeline_complet(
     folder="CVs",
     original_files=original_files,
-    offre=offre
+    offre=offre,
+    mode="console"
 )

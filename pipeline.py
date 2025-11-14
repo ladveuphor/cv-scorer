@@ -6,9 +6,14 @@ from dataframe_utils import (
     ajouter_gains,
     trier_groupes
 )
-from display import afficher_groupes_console
+from display import afficher_groupes_console, afficher_groupes_streamlit
 
 def pipeline_complet(folder, original_files, offre):
+    """
+    Entrees :
+        original_files (liste de string) : liste des noms des fichiers CV originaux, utile pour récuperer leur préfixe
+        mode (string) : console ou streamlit (mode d'affichage des résultats, scores CV calculés)
+    """
     cvs = lire_tous_les_cvs(folder)
 
     # Score des CV
@@ -21,6 +26,5 @@ def pipeline_complet(folder, original_files, offre):
     df = mapper_cv_originaux(df, original_files)
     df = ajouter_gains(df, original_files)
     df = trier_groupes(df, original_files)
-
-    afficher_groupes_console(df)
+    
     return df

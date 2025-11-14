@@ -1,92 +1,111 @@
-# streamlit_app.py
 import streamlit as st
-from pipeline import pipeline_complet
-from display import st_afficher_table
-from io_utils import lire_tous_les_cvs
 import pandas as pd
 import os
 
-st.set_page_config(page_title="CV Scorer", layout="wide")
+from pipeline import pipeline_complet
+from scoring import score_cv_frequence
+from display import display_global_ranking, afficher_groupes_streamlit
 
+# ---------------------------------------------------------
+# Configuration Streamlit
+# ---------------------------------------------------------
+st.set_page_config(page_title="CV Scorer", layout="wide")
 st.title("📋 CV Scorer — Compare CVs vs Offre")
 
+# ---------------------------------------------------------
+# Sidebar : uniquement le dossier et options fréquence
+# ---------------------------------------------------------
 with st.sidebar:
     st.header("Paramètres")
-    folder = st.text_input("Dossier contenant les CV (.docx)", value="./CVs")
-    st.caption("Indique un chemin local (ex: ./CVs). Si vide ou invalide, utiliser l'uploader ci-dessous.")
-    use_uploader = st.checkbox("Uploader des CV manuellement (fallback)", value=False)
-    if use_uploader:
-        uploaded = st.file_uploader("Upload .docx files", accept_multiple_files=True, type=["docx"])
+
+    folder = st.text_input(
+        "Dossier contenant les CV (.docx)",
+        value="./CVs",
+        help="Indique un chemin local contenant uniquement des fichiers .docx"
+    )
+
     st.markdown("---")
-    st.write("Options de scoring")
-    method = st.selectbox("Méthode de scoring", ["frequency (default)", "presence", "tfidf (optional)"])
-    max_occ = st.slider("max_occurrences (pour frequency)", 1, 5, 2)
+    st.write("Options de scoring (présence + fréquence)")
+    max_occ = st.slider("Max occurrences par mot-clé", 1, 5, 2)
 
+# ---------------------------------------------------------
+# Zone de texte de l'offre
+# ---------------------------------------------------------
 st.header("Offre de poste")
-offre_text = st.text_area("Collez l'offre de poste ici (ou chargez un fichier via l'uploader)", height=220)
+offre_par_defaut = """
+Dans le cadre de sa mission d’exploitation et de valorisation des données médicales, la DIDM fait face à un besoin croissant de données fiables. C’est pourquoi un nouveau poste est créé.
+Vous viendrez compléter une équipe composée d’une Chargée d’études et développements à 50 % et d’un Responsable Etudes et Développements. Sous la responsabilité de ce dernier, vos missions seront les suivantes :
+Construire des pipelines de données pour alimenter la BI et l’analytique.
+Modéliser et structurer les flux, tables et schémas
+Garantir la qualité, la fiabilité et la sécurité des données
+Développer de nouveaux datasets pour la BI de la DIDM
+Mettre en place des standards de développement et de bonnes pratiques
+Assurer le support et la résolution des incidents sur votre périmètre...
 
-col1, col2 = st.columns([1,3])
-with col1:
-    run = st.button("▶ Lancer le scoring des CV")
-with col2:
-    st.write("Instructions : Indique le dossier local contenant les .docx ou coche 'Uploader' pour envoyer des fichiers. Puis coller l'offre et lancer le scoring.")
+Votre boîte à outils
+Excellente maîtrise de SQL (Oracle) et solide expérience en R
+Connaissances en Julia, Java ou Scala appréciées
+Pratique des outils de versioning (Git, Bitbucket, Github)
+Expérience avec un outil ETL, idéalement Talend
+Une première approche de la dataviz (Tableau, QlikView) est un atout
+"""
+offre_text = st.text_area(
+    "Collez l'offre de poste ici",
+    value=offre_par_defaut,
+    height=220
+)
 
-# Préparer liste original_files vide par défaut (optionnel)
-original_files_input = st.text_input("Liste des fichiers originaux (séparés par virgule) — facultatif", value="")
-original_files = [s.strip() for s in original_files_input.split(",") if s.strip()]
-
-# Fallback: si uploader utilisé, sauvegarder temporairement en mémoire dict{filename:content}
-if use_uploader and uploaded:
-    cvs_dict = {}
-    for f in uploaded:
-        try:
-            # streamlit UploadedFile -> bytes, passer à python-docx nécessite un fichier, mais on peut lire via Document(f)
-            from docx import Document
-            doc = Document(f)
-            text = "\n".join(p.text for p in doc.paragraphs)
-        except Exception:
-            text = ""
-        cvs_dict[f.name] = text
-else:
-    # lire dossier
-    if os.path.isdir(folder):
-        cvs_dict = None  # pipeline will read folder itself
-    else:
-        cvs_files = st.text("Le dossier indiqué n'existe pas. Vérifiez le chemin.", value="")
-        cvs_dict = {}
-
-if run:
+# ---------------------------------------------------------
+# Lancement du scoring
+# ---------------------------------------------------------
+if st.button("▶ Lancer le scoring des CV"):
     if not offre_text.strip():
-        st.error("Saisis l'offre de poste avant de lancer le scoring.")
+        st.error("Merci d’indiquer une offre avant de lancer le scoring.")
+    elif not os.path.isdir(folder):
+        st.error("Le dossier indiqué n’existe pas ou est invalide.")
     else:
-        st.info("Scoring en cours... (patienter)")
+        st.info("Scoring en cours… Veuillez patienter.")
 
-        # Choix méthode
-        from scoring import score_cv_frequence, score_cv_offre
-        scoring_fn = score_cv_frequence
-        if method == "presence":
-            scoring_fn = score_cv_offre
-
-        # Si cvs_dict non None => on a upload; sinon pipeline lit le dossier
-        if cvs_dict is not None:
-            # construction scores local
-            scores = {}
-            for fname, text in cvs_dict.items():
-                if method == "frequency":
-                    s = score_cv_frequence(text, offre_text, max_occurrences=max_occ)
-                else:
-                    s = scoring_fn(text, offre_text)
-                scores[fname] = float(s)
-            df = pd.DataFrame([{"Fichier": f, "Score": s} for f, s in scores.items()])
-            df = df.sort_values("Score", ascending=False).reset_index(drop=True)
-            # minimal grouping columns for compatibility with display
-            df["base_name"] = df["Fichier"]
-            df["original_score"] = None
-            df["gain_vs_original"] = 0.0
-        else:
-            # pipeline reads folder
-            df = pipeline_complet(folder=folder, original_files=original_files, offre_text=offre_text, scoring_fn=scoring_fn)
-            print("Resultat de l'analyse :", df)
+        # --- LOGIQUE CLÉ : Récupération des fichiers .docx ---
+        original_files = []
+        try:
+            # Liste tous les fichiers et filtre uniquement les .docx
+            all_entries = os.listdir(folder)
+            original_files = [f for f in all_entries if f.lower().endswith(".docx")]
             
-        st.success("Terminé")
-        st_afficher_table(df)
+            if not original_files:
+                st.warning(f"Aucun fichier .docx trouvé dans le dossier : `{folder}`.")
+                st.stop()
+                
+            st.write(f"Fichiers trouvés ({len(original_files)}) : {', '.join(original_files[:3])}...")
+            
+        except Exception as e:
+            st.error(f"Erreur lors de la lecture du contenu du dossier : {e}")
+            st.stop()
+        # ---------------------------------------------------------
+
+
+        # Définition de la fonction unique de scoring
+        def scoring_fn(cv_text, offre):
+            # Le max_occ du slider est capturé ici
+            return score_cv_frequence(cv_text, offre, max_occurrences=max_occ)
+
+        # Appel du pipeline simplifié
+        try:
+            df = pipeline_complet(
+                folder=folder,
+                original_files=original_files,  # PASSAGE DE LA LISTE DES CV DÉTECTÉS
+                offre=offre_text,
+            )
+    
+            st.success("Terminé !")
+            
+            # 1. AFFICHAGE DU CLASSEMENT GLOBAL (NOUVEAU)
+            display_global_ranking(df)
+
+            # 2. AFFICHAGE DES RÉSULTATS DÉTAILLÉS (ANCIEN)
+            afficher_groupes_streamlit(df)
+            
+        except Exception as e:
+             st.error(f"Erreur d'exécution du pipeline : {e}")
+             st.exception(e)
