@@ -110,3 +110,41 @@ def afficher_groupes_streamlit(df_sorted: pd.DataFrame):
         )
 
         st.markdown("---") # Séparateur visuel entre les groupes
+        
+        
+def afficher_keyword_details_streamlit(keyword_details, df_sorted, top_n: int = 10, min_count: int = 1):
+    """
+    Affiche, par groupe (base_name), les occurrences par mot-clé pour chaque CV.
+    Evite les expanders imbriqués : un expander par groupe seulement, puis affichage
+    compact (colonnes + tableau) pour chaque fichier.
+    """
+    import pandas as pd
+
+    st.header("🔎 Détails par mot-clé (occurrences)")
+    st.markdown(f"Affiche jusqu'à les top {top_n} mots-clés par CV (seuil min {min_count}).")
+
+    for base, group in df_sorted.groupby("base_name"):
+        with st.expander(f"📄 Groupe : {base}", expanded=False):
+            for _, row in group.iterrows():
+                fname = row.get("Fichier") or row.get("filename") or row.get("nom", "<inconnu>")
+                counts = keyword_details.get(fname, {})
+
+                # Filtrer et trier par occurrences décroissantes
+                # filtered = [(k, v) for k, v in counts.items() if v >= min_count]
+                filtered = [(k, v) for k, v in counts.items()]
+                if not filtered:
+                    st.write(f"**{fname}** — Aucun mot-clé trouvé (selon le seuil).")
+                    continue
+
+                filtered.sort(key=lambda x: x[1], reverse=True)
+                # top = filtered[:top_n]
+                # df_kw = pd.DataFrame(top, columns=["Mot-clé", "Occurrences"])
+
+                df_kw = filtered
+
+                # Affichage compact : colonne gauche = nom du fichier, droite = tableau
+                c1, c2 = st.columns([1, 3])
+                c1.markdown(f"**{fname}**")
+                c2.dataframe(df_kw, use_container_width=True)
+
+                st.markdown("---")

@@ -2,7 +2,7 @@ import pandas as pd
 
 def construire_df_scores(scores_dict):
     df = pd.DataFrame([{"Fichier": f, "Score": s} for f, s in scores_dict.items()])
-    print("construire_df_scores res =", df.sort_values(by="Score", ascending=False).reset_index(drop=True))
+    # print("construire_df_scores res =", df.sort_values(by="Score", ascending=False).reset_index(drop=True))
     return df.sort_values(by="Score", ascending=False).reset_index(drop=True)
 
 def mapper_cv_originaux(df_scores, original_files):
@@ -15,7 +15,7 @@ def mapper_cv_originaux(df_scores, original_files):
         return fname
 
     df_scores["base_name"] = df_scores["Fichier"].apply(find_base)
-    print("mapper_cv_originaux res =", df_scores)
+    # print("mapper_cv_originaux res =", df_scores)
     return df_scores
 
 def ajouter_gains(df_scores, original_files):

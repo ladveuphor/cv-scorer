@@ -5,6 +5,7 @@ import os
 from pipeline import pipeline_complet
 from scoring import score_cv_frequence
 from display import display_global_ranking, afficher_groupes_streamlit
+from display import afficher_keyword_details_streamlit
 
 # ---------------------------------------------------------
 # Configuration Streamlit
@@ -26,7 +27,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.write("Options de scoring (présence + fréquence)")
-    max_occ = st.slider("Max occurrences par mot-clé", 1, 5, 2)
+    max_occ = st.slider("Max occurrences par mot-clé", 1, 20, 8)
 
 # ---------------------------------------------------------
 # Zone de texte de l'offre
@@ -83,28 +84,31 @@ if st.button("▶ Lancer le scoring des CV"):
             st.error(f"Erreur lors de la lecture du contenu du dossier : {e}")
             st.stop()
         # ---------------------------------------------------------
-
-
-        # Définition de la fonction unique de scoring
-        def scoring_fn(cv_text, offre):
-            # Le max_occ du slider est capturé ici
-            return score_cv_frequence(cv_text, offre, max_occurrences=max_occ)
-
         # Appel du pipeline simplifié
         try:
-            df = pipeline_complet(
-                folder=folder,
-                original_files=original_files,  # PASSAGE DE LA LISTE DES CV DÉTECTÉS
-                offre=offre_text,
+            df, keyword_details = pipeline_complet(
+                        folder=folder,
+                        original_files=original_files,  # PASSAGE DE LA LISTE DES CV DÉTECTÉS
+                        offre=offre_text,
+                        max_occ=max_occ
             )
     
             st.success("Terminé !")
-            
+
             # 1. AFFICHAGE DU CLASSEMENT GLOBAL (NOUVEAU)
             display_global_ranking(df)
 
             # 2. AFFICHAGE DES RÉSULTATS DÉTAILLÉS (ANCIEN)
             afficher_groupes_streamlit(df)
+
+            # 3. AFFICHAGE COMPACT DES DÉTAILS PAR MOT-CLÉ (occurrences)
+            # Utilise les détails renvoyés par pipeline_complet : keyword_details
+            # Fonction ajoutée dans display.py : afficher_keyword_details_streamlit
+            try:
+                afficher_keyword_details_streamlit(keyword_details, df, top_n=10, min_count=0)
+            except Exception as _e:
+                # Ne pas planter l'UI si affichage détaillé échoue
+                st.warning("Impossible d'afficher les détails par mot-clé : " + str(_e))
             
         except Exception as e:
              st.error(f"Erreur d'exécution du pipeline : {e}")
